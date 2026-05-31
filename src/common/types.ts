@@ -8,6 +8,7 @@ export interface FourMomentum {
 
 export interface HepmcParticle {
   id: number;
+  productionVertexId: number;
   status: number;
   pdgId: number;
   momentum: FourMomentum;
@@ -18,6 +19,7 @@ export interface HepmcVertex {
   id: number;
   status: number;
   particleIds: number[];
+  outgoingParticleIds: number[];
   position?: {
     x: number;
     y: number;
@@ -68,16 +70,23 @@ export type RenderNode = RenderParticleNode | RenderVertexNode;
 export interface RenderEdge {
   source: string;
   target: string;
+  particle?: HepmcParticle;
 }
 
 export interface RenderEvent {
   index: number;
   label: string;
+  units?: {
+    momentum?: string;
+    length?: string;
+  };
   nodes: RenderNode[];
   edges: RenderEdge[];
   bounds: {
     width: number;
     height: number;
+    originX: number;
+    originY: number;
   };
 }
 

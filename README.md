@@ -7,6 +7,7 @@ VS Code extension for viewing HepMC3 ASCII event files (`.hepmc`, `.hepmc3`).
 - Opens HepMC files in a custom editor
 - Shows one event at a time with next/previous navigation
 - Supports pan and zoom
+- Right-click in the graph to save the current event as SVG
 - Shows particle hover tooltips with:
   - name
   - PDG ID

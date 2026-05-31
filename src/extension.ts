@@ -117,6 +117,11 @@ class HepmcViewerProvider implements vscode.CustomTextEditorProvider {
     const messageSubscription = panel.webview.onDidReceiveMessage((message) => {
       if (message?.type === "selection" && Number.isInteger(message.index)) {
         this.currentIndexByUri.set(uriKey, Math.max(0, message.index));
+        return;
+      }
+
+      if (message?.type === "saveSvg") {
+        void this.saveCurrentGraphAsSvg(document.uri);
       }
     });
 

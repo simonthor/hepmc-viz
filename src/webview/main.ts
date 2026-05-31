@@ -1,7 +1,7 @@
 import { select } from "d3-selection";
 import { zoom, type D3ZoomEvent } from "d3-zoom";
-import type { RenderEvent, RenderNode, ViewerState } from "../common/types.js";
-import { formatParticleTooltip } from "../common/hepmc.js";
+import type { RenderEvent, RenderNode, RenderVertexNode, ViewerState } from "../common/types.js";
+import { formatParticleLabel, formatParticleTooltipWithUnit } from "../common/hepmc.js";
 
 declare global {
   interface Window {
@@ -18,6 +18,10 @@ interface WebviewMessage {
 interface SelectionMessage {
   type: "selection";
   index: number;
+}
+
+interface SaveSvgMessage {
+  type: "saveSvg";
 }
 
 const vscode = acquireVsCodeApi();
@@ -39,6 +43,7 @@ window.addEventListener("message", (event: MessageEvent<WebviewMessage>) => {
 
 function render(): void {
   document.querySelectorAll(".hepmc-tooltip").forEach((node) => node.remove());
+  document.querySelectorAll(".hepmc-context-menu").forEach((node) => node.remove());
   root.replaceChildren();
 
   const viewerState = state;
@@ -107,9 +112,11 @@ function render(): void {
   tooltip.style.zIndex = "1000";
   tooltip.className = "hepmc-tooltip";
   document.body.appendChild(tooltip);
+  const contextMenu = createContextMenu();
+  document.body.appendChild(contextMenu);
 
   const event = viewerState.events[currentIndex];
-  const svg = createSvg(canvas, event, tooltip);
+  const svg = createSvg(canvas, event, tooltip, contextMenu);
   canvas.appendChild(svg);
   vscode.postMessage({ type: "selection", index: currentIndex } satisfies SelectionMessage);
 }
@@ -123,14 +130,20 @@ function createEmptyState(): HTMLElement {
   return container;
 }
 
-function createSvg(canvas: HTMLElement, event: RenderEvent, tooltip: HTMLDivElement): SVGSVGElement {
+function createSvg(
+  canvas: HTMLElement,
+  event: RenderEvent,
+  tooltip: HTMLDivElement,
+  contextMenu: HTMLDivElement
+): SVGSVGElement {
   const width = canvas.clientWidth || window.innerWidth;
   const height = canvas.clientHeight || window.innerHeight;
+  const bounds = event.bounds;
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("width", String(width));
   svg.setAttribute("height", String(height));
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("viewBox", `0 0 ${bounds.width} ${bounds.height}`);
   svg.style.width = "100%";
   svg.style.height = "100%";
 
@@ -162,11 +175,10 @@ function createSvg(canvas: HTMLElement, event: RenderEvent, tooltip: HTMLDivElem
 
   const positions = new Map(event.nodes.map((node) => [node.id, node]));
   const edgeLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  edgeLayer.setAttribute("stroke", "currentColor");
   edgeLayer.setAttribute("fill", "none");
-  edgeLayer.setAttribute("opacity", "0.35");
   content.appendChild(edgeLayer);
 
+  // Render edges (particles)
   for (const edge of event.edges) {
     const source = positions.get(edge.source);
     const target = positions.get(edge.target);
@@ -174,93 +186,147 @@ function createSvg(canvas: HTMLElement, event: RenderEvent, tooltip: HTMLDivElem
       continue;
     }
 
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    const sourcePoint = toAbsPoint(source, width, height);
-    const targetPoint = toAbsPoint(target, width, height);
-    const midX = (sourcePoint.x + targetPoint.x) / 2;
-    line.setAttribute("d", `M ${sourcePoint.x} ${sourcePoint.y} C ${midX} ${sourcePoint.y}, ${midX} ${targetPoint.y}, ${targetPoint.x} ${targetPoint.y}`);
-    line.setAttribute("marker-end", "url(#arrow)");
-    edgeLayer.appendChild(line);
+    const src = toAbsPoint(source, bounds.originX, bounds.originY);
+    const tgt = toAbsPoint(target, bounds.originX, bounds.originY);
+    const midX = (src.x + tgt.x) / 2;
+
+    const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+
+    // Stroke width proportional to energy
+    const energy = edge.particle?.momentum.energy ?? 0;
+    const strokeWidth = Math.max(0.5, Math.min(6, energy / 150));
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", `M ${src.x} ${src.y} C ${midX} ${src.y}, ${midX} ${tgt.y}, ${tgt.x} ${tgt.y}`);
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-opacity", "0.45");
+    path.setAttribute("stroke-width", String(strokeWidth));
+    path.setAttribute("marker-end", "url(#arrow)");
+    group.appendChild(path);
+
+    // Label
+    if (edge.particle) {
+      const label = formatParticleLabel(edge.particle, event.units?.momentum);
+      const labelY = (src.y + tgt.y) / 2;
+      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      text.setAttribute("x", String(midX));
+      text.setAttribute("y", String(labelY - 4));
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("font-size", "11");
+      text.setAttribute("fill", "currentColor");
+      text.setAttribute("font-family", "sans-serif");
+      text.textContent = label;
+      group.appendChild(text);
+
+      // Tooltip on hover
+      const lines = formatParticleTooltipWithUnit(edge.particle, event.units?.momentum);
+      const showTooltip = (clientX: number, clientY: number) => {
+        tooltip.textContent = lines.join("\n");
+        tooltip.style.left = `${clientX + 12}px`;
+        tooltip.style.top = `${clientY + 12}px`;
+        tooltip.style.display = "block";
+      };
+      group.addEventListener("mouseenter", (e) => showTooltip(e.clientX, e.clientY));
+      group.addEventListener("mousemove", (e) => showTooltip(e.clientX, e.clientY));
+      group.addEventListener("mouseleave", () => {
+        tooltip.style.display = "none";
+      });
+    }
+
+    edgeLayer.appendChild(group);
   }
 
+  // Render vertex nodes (small dots, skip in:/out: pseudo-nodes)
   const nodeLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
   content.appendChild(nodeLayer);
 
   for (const node of event.nodes) {
-    nodeLayer.appendChild(renderNode(node, width, height, tooltip));
+    // Skip pseudo-nodes - they are just edge anchors
+    if (node.id.startsWith("in:") || node.id.startsWith("out:")) {
+      continue;
+    }
+    const point = toAbsPoint(node, bounds.originX, bounds.originY);
+
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", String(point.x));
+    circle.setAttribute("cy", String(point.y));
+    circle.setAttribute("r", "3.5");
+    circle.setAttribute("fill", "currentColor");
+    circle.setAttribute("stroke", "none");
+    nodeLayer.appendChild(circle);
   }
+
+  svg.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    showContextMenu(contextMenu, event.clientX, event.clientY);
+  });
 
   return svg;
 }
 
-function renderNode(node: RenderNode, width: number, height: number, tooltip: HTMLDivElement): SVGGElement {
-  const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  group.setAttribute("transform", `translate(${width / 2 + node.x}, ${height / 2 + node.y})`);
-
-  if (node.kind === "particle") {
-    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    circle.setAttribute("r", "16");
-    circle.setAttribute("fill", statusColor(node.particle.status));
-    circle.setAttribute("stroke", "var(--vscode-editor-foreground)");
-    circle.setAttribute("stroke-width", "1.2");
-    group.appendChild(circle);
-
-    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    label.setAttribute("text-anchor", "middle");
-    label.setAttribute("dominant-baseline", "central");
-    label.setAttribute("font-size", "10");
-    label.setAttribute("fill", "var(--vscode-editor-foreground)");
-    label.textContent = String(node.particle.pdgId);
-    group.appendChild(label);
-
-    const lines = formatParticleTooltip(node.particle);
-    const showTooltip = (clientX: number, clientY: number) => {
-      tooltip.textContent = lines.join("\n");
-      tooltip.style.left = `${clientX + 12}px`;
-      tooltip.style.top = `${clientY + 12}px`;
-      tooltip.style.display = "block";
-    };
-
-    group.addEventListener("mouseenter", (event) => showTooltip(event.clientX, event.clientY));
-    group.addEventListener("mousemove", (event) => showTooltip(event.clientX, event.clientY));
-    group.addEventListener("mouseleave", () => {
-      tooltip.style.display = "none";
-    });
-  } else {
-    const diamond = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    diamond.setAttribute("x", "-8");
-    diamond.setAttribute("y", "-8");
-    diamond.setAttribute("width", "16");
-    diamond.setAttribute("height", "16");
-    diamond.setAttribute("fill", "var(--vscode-editorWidget-background)");
-    diamond.setAttribute("stroke", "var(--vscode-editor-foreground)");
-    diamond.setAttribute("transform", "rotate(45)");
-    group.appendChild(diamond);
-  }
-
-  return group;
-}
-
-function toAbsPoint(node: { x: number; y: number }, width: number, height: number): { x: number; y: number } {
+function toAbsPoint(node: { x: number; y: number }, originX: number, originY: number): { x: number; y: number } {
   return {
-    x: width / 2 + node.x,
-    y: height / 2 + node.y
+    x: originX + node.x,
+    y: originY + node.y
   };
 }
 
-function statusColor(status: number): string {
-  if (status <= 0) {
-    return "rgba(128, 128, 128, 0.6)";
-  }
-  if (status === 1) {
-    return "rgba(100, 181, 246, 0.8)";
-  }
-  if (status >= 60) {
-    return "rgba(255, 167, 38, 0.8)";
-  }
-  return "rgba(129, 199, 132, 0.8)";
+function createContextMenu(): HTMLDivElement {
+  const menu = document.createElement("div");
+  menu.className = "hepmc-context-menu";
+  menu.style.position = "fixed";
+  menu.style.display = "none";
+  menu.style.minWidth = "180px";
+  menu.style.padding = "4px";
+  menu.style.border = "1px solid var(--vscode-editorWidget-border)";
+  menu.style.borderRadius = "6px";
+  menu.style.background = "var(--vscode-editorHoverWidget-background)";
+  menu.style.boxShadow = "0 8px 24px rgba(0,0,0,0.24)";
+  menu.style.zIndex = "2000";
+
+  const item = document.createElement("button");
+  item.type = "button";
+  item.textContent = "Save graph as SVG";
+  item.style.display = "block";
+  item.style.width = "100%";
+  item.style.border = "0";
+  item.style.background = "transparent";
+  item.style.color = "inherit";
+  item.style.textAlign = "left";
+  item.style.padding = "6px 10px";
+  item.style.cursor = "pointer";
+  item.onmouseenter = () => {
+    item.style.background = "var(--vscode-list-hoverBackground)";
+  };
+  item.onmouseleave = () => {
+    item.style.background = "transparent";
+  };
+  item.onclick = () => {
+    hideContextMenu(menu);
+    vscode.postMessage({ type: "saveSvg" } satisfies SaveSvgMessage);
+  };
+
+  menu.appendChild(item);
+  document.addEventListener("click", () => hideContextMenu(menu), { once: true });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      hideContextMenu(menu);
+    }
+  });
+
+  return menu;
+}
+
+function showContextMenu(menu: HTMLDivElement, x: number, y: number): void {
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+  menu.style.display = "block";
+}
+
+function hideContextMenu(menu: HTMLDivElement): void {
+  menu.style.display = "none";
 }
 
 declare function acquireVsCodeApi(): {
-  postMessage(message: SelectionMessage | WebviewMessage): void;
+  postMessage(message: SelectionMessage | WebviewMessage | SaveSvgMessage): void;
 };
