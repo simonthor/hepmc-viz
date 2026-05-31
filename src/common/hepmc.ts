@@ -657,7 +657,7 @@ export function formatParticleLabel(particle: HepmcParticle, momentumUnit?: stri
   const name = particleName(particle.pdgId);
   const unit = formatMomentumUnit(momentumUnit);
   const label = formatNumber(particle.momentum.energy);
-  return unit ? `$${name}$ ${label} ${unit}` : `$${name}$ ${label}`;
+  return unit ? `$${name}~$(${label} ${unit})` : `$${name}~$ (${label})`;
 }
 
 function formatMomentumUnit(unit?: string): string {
