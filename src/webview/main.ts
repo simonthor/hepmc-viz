@@ -7,6 +7,12 @@ declare global {
   interface Window {
     __HEPMC_INITIAL_STATE__?: ViewerState;
   }
+
+  const MathJax:
+    | {
+        typesetPromise: (elements?: HTMLElement[]) => Promise<void>;
+      }
+    | undefined;
 }
 
 interface WebviewMessage {
@@ -40,6 +46,22 @@ window.addEventListener("message", (event: MessageEvent<WebviewMessage>) => {
     render();
   }
 });
+
+async function mathJaxTypeset(elements?: HTMLElement[]): Promise<void> {
+  for (let i = 0; i < 100; i++) {
+    if (typeof MathJax !== "undefined") {
+      break;
+    }
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  if (typeof MathJax !== "undefined") {
+    try {
+      await MathJax.typesetPromise(elements);
+    } catch {
+      // MathJax typesetting failed silently
+    }
+  }
+}
 
 function render(): void {
   document.querySelectorAll(".hepmc-tooltip").forEach((node) => node.remove());
@@ -116,8 +138,9 @@ function render(): void {
   document.body.appendChild(contextMenu);
 
   const event = viewerState.events[currentIndex];
-  const svg = createSvg(canvas, event, tooltip, contextMenu);
+  const { svg, labels } = createSvg(canvas, event, tooltip, contextMenu);
   canvas.appendChild(svg);
+  void mathJaxTypeset(labels);
   vscode.postMessage({ type: "selection", index: currentIndex } satisfies SelectionMessage);
 }
 
@@ -135,7 +158,7 @@ function createSvg(
   event: RenderEvent,
   tooltip: HTMLDivElement,
   contextMenu: HTMLDivElement
-): SVGSVGElement {
+): { svg: SVGSVGElement; labels: HTMLElement[] } {
   const width = canvas.clientWidth || window.innerWidth;
   const height = canvas.clientHeight || window.innerHeight;
   const bounds = event.bounds;
@@ -178,6 +201,8 @@ function createSvg(
   edgeLayer.setAttribute("fill", "none");
   content.appendChild(edgeLayer);
 
+  const labelDivs: HTMLElement[] = [];
+
   // Render edges (particles)
   for (const edge of event.edges) {
     const source = positions.get(edge.source);
@@ -204,24 +229,42 @@ function createSvg(
     path.setAttribute("marker-end", "url(#arrow)");
     group.appendChild(path);
 
-    // Label
+    // Label — use foreignObject so MathJax can render $...$ LaTeX
     if (edge.particle) {
       const label = formatParticleLabel(edge.particle, event.units?.momentum);
       const labelY = (src.y + tgt.y) / 2;
-      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      text.setAttribute("x", String(midX));
-      text.setAttribute("y", String(labelY - 4));
-      text.setAttribute("text-anchor", "middle");
-      text.setAttribute("font-size", "11");
-      text.setAttribute("fill", "currentColor");
-      text.setAttribute("font-family", "sans-serif");
-      text.textContent = label;
-      group.appendChild(text);
+      const foW = 300;
+      const foH = 24;
+      const foreign = document.createElementNS("http://www.w3.org/2000/svg", "foreignObject");
+      foreign.setAttribute("x", String(midX - foW / 2));
+      foreign.setAttribute("y", String(labelY - 4 - foH / 2));
+      foreign.setAttribute("width", String(foW));
+      foreign.setAttribute("height", String(foH));
+      foreign.setAttribute("overflow", "visible");
+      foreign.style.overflow = "visible";
+      foreign.style.pointerEvents = "none";
+
+      const div = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+      div.style.cssText = [
+        "display:flex",
+        "align-items:center",
+        "justify-content:center",
+        "height:100%",
+        "font-size:11px",
+        "font-family:sans-serif",
+        "color:currentColor",
+        "pointer-events:none",
+        "white-space:nowrap",
+      ].join(";");
+      div.textContent = label;
+      foreign.appendChild(div);
+      group.appendChild(foreign);
+      labelDivs.push(div);
 
       // Tooltip on hover
       const lines = formatParticleTooltipWithUnit(edge.particle, event.units?.momentum);
       const showTooltip = (clientX: number, clientY: number) => {
-        tooltip.textContent = lines.join("\n");
+        tooltip.innerHTML = lines.join("<br>");
         tooltip.style.left = `${clientX + 12}px`;
         tooltip.style.top = `${clientY + 12}px`;
         tooltip.style.display = "block";
@@ -261,7 +304,7 @@ function createSvg(
     showContextMenu(contextMenu, event.clientX, event.clientY);
   });
 
-  return svg;
+  return { svg, labels: labelDivs };
 }
 
 function toAbsPoint(node: { x: number; y: number }, originX: number, originY: number): { x: number; y: number } {

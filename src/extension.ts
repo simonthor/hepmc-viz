@@ -137,12 +137,20 @@ class HepmcViewerProvider implements vscode.CustomTextEditorProvider {
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "out", "webview.js"));
     const nonce = getNonce();
     const serialized = sanitizeJson(state);
+    const csp = [
+      `default-src 'none'`,
+      `img-src ${webview.cspSource} https: data:`,
+      `style-src 'unsafe-inline' 'nonce-${nonce}'`,
+      `script-src 'nonce-${nonce}' https://cdn.jsdelivr.net`,
+      `connect-src https://cdn.jsdelivr.net`,
+      `font-src https://cdn.jsdelivr.net`,
+    ].join("; ");
 
     return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style nonce="${nonce}">
     html, body {
@@ -163,8 +171,13 @@ class HepmcViewerProvider implements vscode.CustomTextEditorProvider {
 <body>
   <div id="app"></div>
   <script nonce="${nonce}">
+    window.MathJax = {
+      tex: { inlineMath: [['$', '$']] },
+      startup: { typeset: false }
+    };
     window.__HEPMC_INITIAL_STATE__ = ${serialized};
   </script>
+  <script nonce="${nonce}" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

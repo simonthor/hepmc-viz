@@ -645,7 +645,7 @@ export function formatParticleTooltipWithUnit(particle: HepmcParticle, momentumU
   const unit = formatMomentumUnit(momentumUnit);
   const momentumText = `4-momentum: (${formatNumber(particle.momentum.px)}, ${formatNumber(particle.momentum.py)}, ${formatNumber(particle.momentum.pz)}, ${formatNumber(particle.momentum.energy)})`;
   return [
-    `Name: ${name}`,
+    `Name: $${name}$`,
     `PDG ID: ${particle.pdgId}`,
     `Status: ${particle.status}`,
     `Mass: ${formatNumber(particle.momentum.mass ?? 0)}`,
@@ -657,7 +657,7 @@ export function formatParticleLabel(particle: HepmcParticle, momentumUnit?: stri
   const name = particleName(particle.pdgId);
   const unit = formatMomentumUnit(momentumUnit);
   const label = formatNumber(particle.momentum.energy);
-  return unit ? `${name} ${label} ${unit}` : `${name} ${label}`;
+  return unit ? `$${name}$ ${label} ${unit}` : `$${name}$ ${label}`;
 }
 
 function formatMomentumUnit(unit?: string): string {
