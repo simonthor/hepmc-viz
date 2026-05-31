@@ -1,0 +1,76 @@
+{
+  "name": "hepmc-viz",
+  "displayName": "HepMC Visualizer",
+  "description": "Visualize HepMC3 event files in VS Code.",
+  "version": "0.0.1",
+  "private": true,
+  "engines": {
+    "vscode": "^1.84.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCustomEditor:hepmc-viz.viewer",
+    "onCommand:hepmc-viz.openViewer"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "hepmc-viz.openViewer",
+        "title": "HepMC3: Open Viewer"
+      },
+      {
+        "command": "hepmc-viz.saveSvg",
+        "title": "HepMC3: Save Event Graph as SVG"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "hepmc-viz.viewer",
+        "displayName": "HepMC3 Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.hepmc"
+          },
+          {
+            "filenamePattern": "*.hepmc3"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "hepmc-viz.saveSvg",
+          "when": "resourceExtname == .hepmc || resourceExtname == .hepmc3",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "hepmc-viz.saveSvg",
+          "when": "resourceExtname == .hepmc || resourceExtname == .hepmc3"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/d3-selection": "^3.0.11",
+    "@types/d3-zoom": "^3.0.8",
+    "@types/node": "^22.15.0",
+    "@types/vscode": "^1.84.0",
+    "esbuild": "^0.25.5",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "d3-selection": "^3.0.0",
+    "d3-zoom": "^3.0.0"
+  }
+}
