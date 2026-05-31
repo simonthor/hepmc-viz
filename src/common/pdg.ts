@@ -44,7 +44,10 @@ const PDG_NAMES: Record<number, string> = {
   [2112]: "n",
   [-2112]: "\\bar{n}",
   [2212]: "p",
-  [-2212]: "\\bar{p}"
+  [-2212]: "\\bar{p}",
+  2103: "(ud)_1",
+  213: "\\rho(770)^+"
+  // TODO add more PDG IDs
 };
 
 export function particleName(pdgId: number): string {
