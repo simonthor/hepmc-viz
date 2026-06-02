@@ -3,7 +3,7 @@
   "displayName": "HepMC Visualizer",
   "description": "Visualize HepMC3 event files in VS Code.",
   "publisher": "simonthor",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "icon": "logo.png",
   "repository": {
     "type": "git",
