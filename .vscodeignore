@@ -5,3 +5,5 @@ package-lock.json
 .gitignore
 README.md
 **/*.map
+.agents/**
+do-not-publish/**
