@@ -2,7 +2,8 @@
   "name": "hepmc-viz",
   "displayName": "HepMC Visualizer",
   "description": "Visualize HepMC3 event files in VS Code.",
-  "version": "0.0.1",
+  "publisher": "simonthor",
+  "version": "1.0.0",
   "private": true,
   "engines": {
     "vscode": "^1.84.0"
