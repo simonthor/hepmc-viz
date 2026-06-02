@@ -4,6 +4,11 @@
   "description": "Visualize HepMC3 event files in VS Code.",
   "publisher": "simonthor",
   "version": "1.0.0",
+  "icon": "logo.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/simonthor/hepmc-viz.git"
+  },
   "private": true,
   "engines": {
     "vscode": "^1.84.0"
